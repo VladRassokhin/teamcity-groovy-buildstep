@@ -1,9 +1,12 @@
 buildscript {
     repositories {
-        jcenter()
+        mavenLocal()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
     }
     dependencies {
-        classpath('com.github.goldin.plugins.gradle:teamcity:0.3.1')
+        classpath "com.github.rodm:gradle-teamcity-plugin:0.8.1"
     }
 }
 
@@ -11,9 +14,8 @@ repositories {
     jcenter()
 }
 
-ext.teamCityVersion = '8.0.5'
+ext.teamCityVersion = '8.1.5'
 
-apply from: 'https://raw.github.com/evgeny-goldin/gradle-plugins/master/teamcity/teamcity.gradle'
 
 allprojects {
     apply plugin: 'java'
@@ -36,10 +38,8 @@ subprojects {
     group = 'me.champeau.teamcity'
 
     repositories {
-        jcenter()
-        maven {
-            url 'http://evgenyg.artifactoryonline.com/evgenyg/repo/'
-        }
+        mavenLocal()
+        mavenCentral()
     }
 
     dependencies {
@@ -69,63 +69,50 @@ subprojects {
 
 }
 
-assembleTeamcityPlugin.dependsOn project(':agent').jar
-assembleTeamcityPlugin.dependsOn project(':server').jar
-
-assembleTeamcityPluginConfig {
-
-    name 'groovy-buildstep'
-    displayName 'Groovy build step plugin'
-    description 'Allows to execute groovy scripts as build steps'
-    downloadUrl 'Plugin download URL'
-    email 'cedric.champeau@gmail.com'
-    vendorName 'Cédric Champeau'
-    vendorUrl 'http://melix.github.io/blog'
-
-    useSeparateClassloader true
-
-    server project(':server')
-    agent project(':agent')
-    artifacts project(':server')
-
-}
-
 
 /**
  * Gradle subproject with agent-side sources of the plugin.
  */
 project(':agent') {
-    configurations {
-        compile {
-            extendsFrom teamcityAgent, teamcityCommonEx
-        }
-    }
+    apply plugin: 'com.github.rodm.teamcity-agent'
+    apply plugin: 'groovy'
     dependencies {
         compile 'org.codehaus.groovy:groovy-all:2.4.3'
         compile 'org.apache.ivy:ivy:2.4.0-rc1'
     }
-    apply plugin: 'groovy'
+    teamcity {
+        version = teamCityVersion
+
+        descriptor {
+            pluginDeployment {
+                useSeparateClassloader = true
+            }
+        }
+    }
 }
 
 /**
  * Gradle subproject with server-side sources of the plugin.
  */
 project(':server') {
-    configurations {
-        compile {
-            extendsFrom teamcityServer
+    apply plugin: 'com.github.rodm.teamcity-server'
+    dependencies {
+        agent project(path: ':agent', configuration: 'plugin')
+    }
+    teamcity {
+        version = teamCityVersion
+
+        server {
+            descriptor {
+                name = 'groovy-buildstep'
+                displayName = 'Groovy build step plugin'
+                version = project.version
+                vendorName = 'Cédric Champeau'
+                vendorUrl = 'http://melix.github.io/blog'
+                description = 'Allows to execute groovy scripts as build steps'
+                email = 'cedric.champeau@gmail.com'
+                useSeparateClassloader = true
+            }
         }
     }
-}
-
-/**
- * Copies plugin's Zip archive into ".BuildServer/plugins".
- */
-task cpz( dependsOn: assembleTeamcityPlugin ) << {
-
-    final pluginsDir = "${ System.getProperty( 'user.home' )}/.BuildServer/plugins"
-    final archive    = assembleTeamcityPlugin.archive
-
-    delete( "$pluginsDir/$archive.name" )
-    copy { from archive; into pluginsDir }
 }
